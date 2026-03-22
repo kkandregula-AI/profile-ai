@@ -43,7 +43,7 @@
     <section class="hero-card">
       <div>
         <span class="eyebrow">AI Portfolio Builder</span>
-        <h2>Paste LinkedIn profile text and turn it into a polished portfolio page.</h2>
+        <h2>Paste LinkedIn text, upload LinkedIn PDF, and add GitHub projects to generate a polished portfolio.</h2>
         <p>
           Generate portfolio HTML instantly, edit it, preview it live, save drafts, and download a ready-to-host file.
         </p>
@@ -62,27 +62,17 @@
       <section id="generator" class="tab-panel active">
         <div class="card">
           <label for="linkedinInput">Paste LinkedIn Profile Text</label>
-          <textarea id="linkedinInput" class="generator-textarea" spellcheck="false" placeholder="Paste LinkedIn About, Experience, Skills, Headline, Education, Certifications, etc.
+          <textarea
+            id="linkedinInput"
+            class="generator-textarea"
+            spellcheck="false"
+            placeholder="Paste LinkedIn About, Experience, Skills, Headline, Education, Certifications, etc."></textarea>
 
-Example:
-Krishnamurthy Kandregula
-AI/ML Program Manager | Product Strategy | Mainframes | Digital Transformation
-
-About
-Experienced AI/ML and IT program leader with expertise in mainframes, enterprise modernization, product strategy, and delivery leadership.
-
-Experience
-Program Manager - ABC Corp
-Led cross-functional teams to deliver enterprise modernization and AI initiatives.
-
-Senior Manager - XYZ Ltd
-Managed digital transformation programs and large-scale delivery.
-
-Skills
-AI/ML, Product Management, Program Management, Mainframes, Cloud, Digital Transformation
-
-Education
-B.Tech in Computer Science"></textarea>
+          <div class="upload-row">
+            <label for="linkedinPdfInput" class="file-label">Upload LinkedIn PDF</label>
+            <input type="file" id="linkedinPdfInput" accept=".pdf" hidden />
+            <span id="pdfStatus" class="status-text">No PDF uploaded yet.</span>
+          </div>
 
           <div class="generator-grid">
             <div>
@@ -101,6 +91,27 @@ B.Tech in Computer Science"></textarea>
               <label for="personLocation">Location</label>
               <input id="personLocation" type="text" placeholder="Hyderabad, India" />
             </div>
+            <div>
+              <label for="githubUrl">GitHub Profile URL</label>
+              <input id="githubUrl" type="url" placeholder="https://github.com/yourusername" />
+            </div>
+            <div>
+              <label for="portfolioTitle">Portfolio Title</label>
+              <input id="portfolioTitle" type="text" placeholder="AI/ML Program Manager Portfolio" />
+            </div>
+          </div>
+
+          <div class="card nested-card">
+            <label for="projectsInput">Deployed Projects (one per line)</label>
+            <textarea
+              id="projectsInput"
+              class="projects-textarea"
+              spellcheck="false"
+              placeholder="Example:
+Portfolio AI | AI-powered portfolio generator | https://your-project-url.com
+Expo Feedback App | Judge scoring app | https://expo-feedback.vercel.app
+ReelRocket | AI reels app for small businesses | https://github.com/yourusername/reelrocket"></textarea>
+            <p class="helper-text">Format: <strong>Project Name | Short Description | URL</strong></p>
           </div>
 
           <div class="actions">
@@ -182,6 +193,7 @@ B.Tech in Computer Science"></textarea>
     </main>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
