@@ -63,8 +63,8 @@ function normalizeExtractedText(text) {
   return String(text || "")
     .replace(/\r/g, "")
     .replace(/\u2022/g, "\n• ")
-    .replace(/\s+\|\s+/g, " | ")
-    .replace(/[ \t]+/g, " ")
+    .replace(/\t/g, " ")
+    .replace(/[ ]{2,}/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -94,9 +94,7 @@ function extractGithubUsername(url) {
     const normalized = normalizeUrl(raw);
     const parsed = new URL(normalized);
 
-    if (!parsed.hostname.includes("github.com")) {
-      return "";
-    }
+    if (!parsed.hostname.includes("github.com")) return "";
 
     const parts = parsed.pathname.split("/").filter(Boolean);
     return parts[0] || "";
@@ -117,10 +115,11 @@ function inferLocation(text) {
   const locationPatterns = [
     /hyderabad/i, /india/i, /bengaluru/i, /bangalore/i, /chennai/i,
     /mumbai/i, /delhi/i, /pune/i, /london/i, /usa/i, /uk/i,
-    /singapore/i, /dubai/i, /australia/i, /canada/i
+    /singapore/i, /dubai/i, /australia/i, /canada/i, /new york/i,
+    /california/i, /telangana/i, /andhra/i
   ];
 
-  for (const line of lines.slice(0, 12)) {
+  for (const line of lines.slice(0, 15)) {
     if (locationPatterns.some((rx) => rx.test(line))) {
       return line;
     }
@@ -135,10 +134,7 @@ function inferNameFromText(text) {
   const lines = splitIntoLinesSmart(text);
   if (!lines.length) return "Your Name";
 
-  const first = lines[0]
-    .replace(/^name[:\s-]*/i, "")
-    .trim();
-
+  const first = lines[0].replace(/^name[:\s-]*/i, "").trim();
   return first || "Your Name";
 }
 
@@ -148,10 +144,7 @@ function inferRoleFromText(text) {
   const lines = splitIntoLinesSmart(text);
   if (lines.length < 2) return "Professional";
 
-  const second = lines[1]
-    .replace(/^headline[:\s-]*/i, "")
-    .trim();
-
+  const second = lines[1].replace(/^headline[:\s-]*/i, "").trim();
   return second || "Professional";
 }
 
@@ -168,14 +161,18 @@ function autofillProfileFields(text) {
   if (!personLocation.value.trim() && location) personLocation.value = location;
 }
 
+function headingMatch(line, headings) {
+  const normalized = line.toLowerCase().replace(/:$/, "").trim();
+  return headings.includes(normalized);
+}
+
 function extractSection(text, headings) {
   const lines = cleanLines(text);
   const wanted = headings.map((h) => h.toLowerCase());
 
   let start = -1;
   for (let i = 0; i < lines.length; i++) {
-    const current = lines[i].toLowerCase().replace(/:$/, "").trim();
-    if (wanted.includes(current)) {
+    if (headingMatch(lines[i], wanted)) {
       start = i + 1;
       break;
     }
@@ -185,7 +182,8 @@ function extractSection(text, headings) {
 
   const stopWords = [
     "about", "experience", "education", "skills", "projects",
-    "certifications", "summary", "licenses", "honors", "contact"
+    "certifications", "licenses", "licenses & certifications",
+    "summary", "honors", "contact", "publications"
   ];
 
   const out = [];
@@ -208,23 +206,25 @@ function inferRole(text) {
 
 function inferSummary(text) {
   const section = extractSection(text, ["about", "summary"]);
-  if (section) {
-    return section.replace(/\s{2,}/g, " ").trim();
-  }
+  if (section) return section.replace(/\s{2,}/g, " ").trim();
 
   const lines = cleanLines(text).slice(2, 8);
   return lines.join(" ").trim() || "Professional summary";
+}
+
+function splitBulletish(sectionText) {
+  return String(sectionText || "")
+    .split(/\n|•|·/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function inferExperience(text) {
   const section = extractSection(text, ["experience"]);
   if (!section) return [];
 
-  return section
-    .split(/\n|•/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 8);
+  const items = splitBulletish(section);
+  return items.slice(0, 12);
 }
 
 function inferSkills(text) {
@@ -235,18 +235,45 @@ function inferSkills(text) {
     .split(/,|\n|•|·/)
     .map((s) => s.trim())
     .filter(Boolean)
-    .slice(0, 12);
+    .slice(0, 14);
 }
 
 function inferEducation(text) {
   const section = extractSection(text, ["education"]);
-  if (!section) return [];
+  if (section) {
+    return splitBulletish(section).slice(0, 8);
+  }
 
-  return section
-    .split(/\n|•/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 5);
+  const lines = cleanLines(text);
+  const eduKeywords = [
+    /b\.?tech/i, /bachelor/i, /master/i, /m\.?tech/i, /mba/i,
+    /university/i, /college/i, /institute/i, /school/i, /degree/i
+  ];
+
+  const matches = lines.filter((line) => eduKeywords.some((rx) => rx.test(line)));
+  return matches.slice(0, 6);
+}
+
+function inferCertifications(text) {
+  const section = extractSection(text, [
+    "certifications",
+    "licenses & certifications",
+    "licenses",
+    "certification"
+  ]);
+
+  if (section) {
+    return splitBulletish(section).slice(0, 10);
+  }
+
+  const lines = cleanLines(text);
+  const certKeywords = [
+    /certified/i, /certification/i, /aws/i, /azure/i, /gcp/i,
+    /pmp/i, /scrum/i, /oracle/i, /microsoft/i, /google/i
+  ];
+
+  const matches = lines.filter((line) => certKeywords.some((rx) => rx.test(line)));
+  return matches.slice(0, 8);
 }
 
 function parseProjects(text) {
@@ -262,6 +289,52 @@ function parseProjects(text) {
     .filter((p) => p.name);
 }
 
+/* ---------------- Better PDF extraction ---------------- */
+async function extractPdfTextPreserveLines(file) {
+  const buffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+
+  const pagesText = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+
+    const rows = [];
+    for (const item of content.items) {
+      const str = item.str ? String(item.str).trim() : "";
+      if (!str) continue;
+
+      const y = Math.round(item.transform[5]);
+      rows.push({ y, str, x: item.transform[4] || 0 });
+    }
+
+    rows.sort((a, b) => {
+      if (Math.abs(b.y - a.y) > 2) return b.y - a.y;
+      return a.x - b.x;
+    });
+
+    const grouped = [];
+    for (const row of rows) {
+      const last = grouped[grouped.length - 1];
+      if (!last || Math.abs(last.y - row.y) > 2) {
+        grouped.push({ y: row.y, parts: [row] });
+      } else {
+        last.parts.push(row);
+      }
+    }
+
+    const lines = grouped.map((group) => {
+      group.parts.sort((a, b) => a.x - b.x);
+      return group.parts.map((p) => p.str).join(" ").replace(/\s{2,}/g, " ").trim();
+    });
+
+    pagesText.push(lines.join("\n"));
+  }
+
+  return normalizeExtractedText(pagesText.join("\n\n"));
+}
+
 /* ---------------- PDF Upload ---------------- */
 if (linkedinPdfInput) {
   linkedinPdfInput.addEventListener("change", async (e) => {
@@ -275,17 +348,7 @@ if (linkedinPdfInput) {
 
     try {
       pdfStatus.textContent = "Reading PDF...";
-      const buffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
-
-      let text = "";
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        text += content.items.map((item) => item.str).join(" ") + "\n\n";
-      }
-
-      const normalized = normalizeExtractedText(text);
+      const normalized = await extractPdfTextPreserveLines(file);
       linkedinInput.value = normalized;
       autofillProfileFields(normalized);
       pdfStatus.textContent = "PDF extracted successfully.";
@@ -317,9 +380,7 @@ async function fetchGithubReposToProjects() {
     const response = await fetch(
       `https://api.github.com/users/${encodeURIComponent(username)}/repos?sort=updated&per_page=100`,
       {
-        headers: {
-          "Accept": "application/vnd.github+json"
-        }
+        headers: { "Accept": "application/vnd.github+json" }
       }
     );
 
@@ -349,24 +410,33 @@ async function fetchGithubReposToProjects() {
         const aScore = (a.stargazers_count || 0) + (a.forks_count || 0);
         const bScore = (b.stargazers_count || 0) + (b.forks_count || 0);
         return bScore - aScore;
-      })
-      .slice(0, 6);
+      });
 
     if (!filteredRepos.length) {
       githubStatus.textContent = "No suitable repos found. Generating without repos.";
       return { ok: false, reason: "no-suitable" };
     }
 
-    const lines = filteredRepos.map((repo) => {
-      const description = repo.description || "GitHub project";
-      const finalUrl = repo.homepage && repo.homepage.trim()
-        ? repo.homepage.trim()
-        : repo.html_url;
+    const existing = parseProjects(projectsInput.value);
+    const existingNames = new Set(existing.map((p) => p.name.toLowerCase()));
 
-      return `${repo.name} | ${description} | ${finalUrl}`;
-    });
+    const repoProjects = filteredRepos
+      .filter((repo) => !existingNames.has(String(repo.name || "").toLowerCase()))
+      .map((repo) => {
+        const description = repo.description || "GitHub project";
+        const finalUrl = repo.homepage && repo.homepage.trim()
+          ? repo.homepage.trim()
+          : repo.html_url;
 
-    projectsInput.value = lines.join("\n");
+        return `${repo.name} | ${description} | ${finalUrl}`;
+      });
+
+    const mergedLines = [
+      ...existing.map((p) => `${p.name} | ${p.description || ""} | ${p.url || ""}`),
+      ...repoProjects
+    ].filter(Boolean);
+
+    projectsInput.value = mergedLines.join("\n");
     githubStatus.textContent = `Loaded ${filteredRepos.length} GitHub repos.`;
     return { ok: true, count: filteredRepos.length };
   } catch (error) {
@@ -390,6 +460,7 @@ function generateHTML(text) {
   const experience = inferExperience(text);
   const skills = inferSkills(text);
   const education = inferEducation(text);
+  const certifications = inferCertifications(text);
   const projects = parseProjects(projectsInput.value);
 
   const email = personEmail.value.trim();
@@ -402,6 +473,10 @@ function generateHTML(text) {
     .join("");
 
   const eduHtml = (education.length ? education : ["Add your education here."])
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("");
+
+  const certHtml = (certifications.length ? certifications : ["Add certifications here if applicable."])
     .map((item) => `<li>${escapeHtml(item)}</li>`)
     .join("");
 
@@ -457,54 +532,16 @@ body{
   backdrop-filter:blur(16px)
 }
 .hero{margin-bottom:18px}
-h1{
-  margin:0;
-  font-size:clamp(2rem,5vw,3.5rem);
-  line-height:1.15
-}
-.role{
-  margin:10px 0;
-  color:#c4d5ff;
-  font-size:1.15rem;
-  font-weight:600
-}
-.contact{
-  margin:0 0 14px;
-  color:#9fb2d6;
-  font-size:.98rem
-}
-.summary{
-  margin:0;
-  color:#e4edff;
-  line-height:1.75;
-  font-size:1rem
-}
-.grid{
-  display:grid;
-  grid-template-columns:1.1fr .9fr;
-  gap:18px;
-  margin-top:18px
-}
-h2{
-  margin:0 0 14px;
-  font-size:1.2rem
-}
-h3{
-  margin:0 0 8px;
-  font-size:1rem
-}
-ul{
-  margin:0;
-  padding-left:20px;
-  line-height:1.8;
-  color:#dbe7ff
-}
+h1{margin:0;font-size:clamp(2rem,5vw,3.5rem);line-height:1.15}
+.role{margin:10px 0;color:#c4d5ff;font-size:1.15rem;font-weight:600}
+.contact{margin:0 0 14px;color:#9fb2d6;font-size:.98rem}
+.summary{margin:0;color:#e4edff;line-height:1.75;font-size:1rem}
+.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px;margin-top:18px}
+h2{margin:0 0 14px;font-size:1.2rem}
+h3{margin:0 0 8px;font-size:1rem}
+ul{margin:0;padding-left:20px;line-height:1.8;color:#dbe7ff}
 li{margin-bottom:8px}
-.chips{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px
-}
+.chips{display:flex;flex-wrap:wrap;gap:10px}
 .chip{
   padding:10px 14px;
   border-radius:999px;
@@ -512,22 +549,14 @@ li{margin-bottom:8px}
   font-size:.92rem;
   font-weight:700
 }
-.projects{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:16px
-}
+.projects{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .project{
   border:1px solid rgba(255,255,255,.12);
   border-radius:18px;
   padding:18px;
   background:rgba(255,255,255,.05)
 }
-.project p{
-  margin:0 0 12px;
-  line-height:1.6;
-  color:#dbe7ff
-}
+.project p{margin:0 0 12px;line-height:1.6;color:#dbe7ff}
 .project a{
   display:inline-block;
   padding:10px 14px;
@@ -537,12 +566,7 @@ li{margin-bottom:8px}
   text-decoration:none;
   font-weight:700
 }
-.footer{
-  text-align:center;
-  color:#93a7ce;
-  margin-top:20px;
-  font-size:.92rem
-}
+.footer{text-align:center;color:#93a7ce;margin-top:20px;font-size:.92rem}
 @media (max-width:800px){
   .grid,.projects{grid-template-columns:1fr}
   .wrap{padding:22px 14px}
@@ -576,14 +600,19 @@ li{margin-bottom:8px}
       <ul>${eduHtml}</ul>
     </div>
     <div class="card">
-      <h2>About</h2>
-      <p class="summary">${escapeHtml(summary)}</p>
+      <h2>Certifications</h2>
+      <ul>${certHtml}</ul>
     </div>
   </section>
 
   <section class="card" style="margin-top:18px">
     <h2>Projects</h2>
     <div class="projects">${projectsHtml}</div>
+  </section>
+
+  <section class="card" style="margin-top:18px">
+    <h2>About</h2>
+    <p class="summary">${escapeHtml(summary)}</p>
   </section>
 
   <div class="footer">Built with Portfolio AI</div>
@@ -728,19 +757,60 @@ async function createShareLink() {
 }
 
 /* ---------------- Export PNG ---------------- */
+function createOffscreenRenderRoot() {
+  let root = document.getElementById("pngRenderRoot");
+  if (!root) {
+    root = document.createElement("div");
+    root.id = "pngRenderRoot";
+    root.style.position = "fixed";
+    root.style.left = "-100000px";
+    root.style.top = "0";
+    root.style.width = "1200px";
+    root.style.background = "#ffffff";
+    root.style.zIndex = "-1";
+    document.body.appendChild(root);
+  }
+  return root;
+}
+
 async function exportPreviewAsPng() {
   try {
-    const doc = previewFrame.contentDocument || previewFrame.contentWindow.document;
+    const html = htmlInput.value.trim();
+    if (!html) {
+      alert("Generate or edit HTML first.");
+      return;
+    }
 
+    const root = createOffscreenRenderRoot();
+    root.innerHTML = "";
+
+    const iframe = document.createElement("iframe");
+    iframe.style.width = "1200px";
+    iframe.style.height = "1600px";
+    iframe.style.border = "0";
+    iframe.setAttribute("sandbox", "allow-same-origin");
+    root.appendChild(iframe);
+
+    iframe.srcdoc = html;
+
+    await new Promise((resolve) => {
+      iframe.onload = () => setTimeout(resolve, 800);
+    });
+
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
     if (!doc || !doc.body) {
-      alert("Run Preview first.");
+      alert("Failed to prepare preview for PNG export.");
       return;
     }
 
     const canvas = await html2canvas(doc.body, {
       backgroundColor: "#ffffff",
       useCORS: true,
-      scale: 2
+      scale: 2,
+      width: doc.body.scrollWidth,
+      height: doc.body.scrollHeight,
+      windowWidth: doc.body.scrollWidth,
+      windowHeight: doc.body.scrollHeight
     });
 
     const a = document.createElement("a");
@@ -832,7 +902,11 @@ Skills
 AI/ML, Product Management, Program Management, Mainframes, Cloud, Digital Transformation, Leadership
 
 Education
-B.Tech in Computer Science`;
+B.Tech in Computer Science
+
+Certifications
+AWS Certified Cloud Practitioner
+Scrum Master Certification`;
 
     personName.value = "Krishnamurthy Kandregula";
     personRole.value = "AI/ML Program Manager";
