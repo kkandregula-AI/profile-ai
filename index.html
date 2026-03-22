@@ -3,70 +3,115 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <title>Portfolio AI</title>
 
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#081120" />
-
   <link rel="stylesheet" href="style.css" />
 
-  <!-- ✅ FIXED PDF LIBRARY -->
   <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
-
 <body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1>Portfolio AI</h1>
+        <p class="sub">Create · Preview · Export</p>
+      </div>
+    </header>
 
-<div class="app-shell">
+    <nav class="tabs">
+      <button class="tab active" data-tab="generator" type="button">Generate</button>
+      <button class="tab" data-tab="editor" type="button">Editor</button>
+      <button class="tab" data-tab="preview" type="button">Preview</button>
+    </nav>
 
-  <h1>Portfolio AI</h1>
+    <section id="generator" class="tab-panel active">
+      <div class="card">
+        <label for="linkedinInput">Paste LinkedIn Profile Text</label>
+        <textarea id="linkedinInput" class="big-text" placeholder="Paste LinkedIn profile text here..."></textarea>
 
-  <!-- TABS -->
-  <div class="tabs">
-    <button class="tab active" data-tab="generator">Generate</button>
-    <button class="tab" data-tab="editor">Editor</button>
-    <button class="tab" data-tab="preview">Preview</button>
+        <div class="row">
+          <label for="linkedinPdfInput" class="file-label">Upload LinkedIn PDF</label>
+          <input type="file" id="linkedinPdfInput" accept=".pdf" hidden />
+          <span id="pdfStatus" class="status">No PDF uploaded</span>
+        </div>
+
+        <div class="grid-2">
+          <div>
+            <label for="personName">Name</label>
+            <input id="personName" type="text" placeholder="Your name" />
+          </div>
+          <div>
+            <label for="personRole">Role / Headline</label>
+            <input id="personRole" type="text" placeholder="AI/ML Program Manager" />
+          </div>
+          <div>
+            <label for="personEmail">Email</label>
+            <input id="personEmail" type="email" placeholder="name@example.com" />
+          </div>
+          <div>
+            <label for="personLocation">Location</label>
+            <input id="personLocation" type="text" placeholder="Hyderabad, India" />
+          </div>
+          <div>
+            <label for="githubUrl">GitHub Profile URL</label>
+            <input id="githubUrl" type="url" placeholder="https://github.com/username" />
+          </div>
+          <div>
+            <label for="portfolioTitle">Portfolio Title</label>
+            <input id="portfolioTitle" type="text" placeholder="Your Portfolio" />
+          </div>
+        </div>
+
+        <div class="row">
+          <button id="fetchGithubBtn" type="button">Fetch GitHub Repos</button>
+          <span id="githubStatus" class="status">No GitHub repos fetched</span>
+        </div>
+
+        <label for="projectsInput">Projects (one per line: Name | Description | URL)</label>
+        <textarea id="projectsInput" placeholder="Portfolio AI | AI portfolio builder | https://your-site.com"></textarea>
+
+        <div class="actions">
+          <button id="generateBtn" type="button">Generate Portfolio</button>
+          <button id="loadSampleBtn" type="button">Load Sample</button>
+          <button id="clearLinkedinBtn" class="secondary" type="button">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="editor" class="tab-panel">
+      <div class="card">
+        <label for="fileName">File Name</label>
+        <input id="fileName" type="text" value="portfolio-ai.html" />
+
+        <label for="htmlInput">HTML</label>
+        <textarea id="htmlInput" class="code-text"></textarea>
+
+        <div class="actions">
+          <button id="runBtn" type="button">Run Preview</button>
+          <button id="saveBtn" type="button">Save Draft</button>
+          <button id="downloadBtn" type="button">Download HTML</button>
+          <button id="shareBtn" type="button">Shareable Link</button>
+          <button id="exportBtn" type="button">Export PNG</button>
+          <button id="clearBtn" class="secondary" type="button">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="preview" class="tab-panel">
+      <div class="card">
+        <iframe id="previewFrame" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"></iframe>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Recent Drafts</h3>
+      <div id="recentList"></div>
+    </section>
   </div>
 
-  <!-- GENERATE -->
-  <section id="generator" class="tab-panel active">
-
-    <label>Paste LinkedIn Profile Text</label>
-    <textarea id="linkedinInput"></textarea>
-
-    <!-- PDF Upload -->
-    <label class="file-label">
-      Upload LinkedIn PDF
-      <input type="file" id="linkedinPdfInput" accept=".pdf" hidden>
-    </label>
-
-    <p id="pdfStatus">No PDF uploaded</p>
-
-    <input id="personName" placeholder="Name">
-    <input id="personRole" placeholder="Role">
-    <input id="githubUrl" placeholder="GitHub URL">
-
-    <label>Projects (Name | Desc | URL)</label>
-    <textarea id="projectsInput"></textarea>
-
-    <button id="generateBtn">Generate Portfolio</button>
-
-  </section>
-
-  <!-- EDITOR -->
-  <section id="editor" class="tab-panel">
-    <textarea id="htmlInput"></textarea>
-    <button id="runBtn">Run Preview</button>
-  </section>
-
-  <!-- PREVIEW -->
-  <section id="preview" class="tab-panel">
-    <iframe id="previewFrame"></iframe>
-  </section>
-
-</div>
-
-<script src="app.js"></script>
-
+  <script src="app.js"></script>
 </body>
 </html>
