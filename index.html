@@ -8,192 +8,65 @@
 
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#081120" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Portfolio AI" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="style.css" />
+
+  <!-- ✅ FIXED PDF LIBRARY -->
+  <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 </head>
+
 <body>
-  <div class="bg-orb orb-1"></div>
-  <div class="bg-orb orb-2"></div>
 
-  <div class="app-shell">
-    <header class="hero">
-      <div class="brand">
-        <div class="brand-mark">PA</div>
-        <div>
-          <h1>Portfolio AI</h1>
-          <p>Create · Preview · Export</p>
-        </div>
-      </div>
+<div class="app-shell">
 
-      <div class="hero-actions">
-        <button id="installBtn" class="icon-btn ghost" type="button" style="display:none;">Install</button>
-        <button id="themeToggle" class="icon-btn" type="button">🌙</button>
-      </div>
-    </header>
+  <h1>Portfolio AI</h1>
 
-    <section class="hero-card">
-      <div>
-        <span class="eyebrow">AI Portfolio Builder</span>
-        <h2>Paste LinkedIn text, upload LinkedIn PDF, and add GitHub projects to generate a polished portfolio.</h2>
-        <p>
-          Generate portfolio HTML instantly, edit it, preview it live, save drafts, and download a ready-to-host file.
-        </p>
-      </div>
-    </section>
-
-    <nav class="tabs">
-      <button class="tab active" data-tab="generator" type="button">Generate</button>
-      <button class="tab" data-tab="editor" type="button">Editor</button>
-      <button class="tab" data-tab="preview" type="button">Preview</button>
-      <button class="tab" data-tab="templates" type="button">Templates</button>
-      <button class="tab" data-tab="recent" type="button">Drafts</button>
-    </nav>
-
-    <main class="content">
-      <section id="generator" class="tab-panel active">
-        <div class="card">
-          <label for="linkedinInput">Paste LinkedIn Profile Text</label>
-          <textarea
-            id="linkedinInput"
-            class="generator-textarea"
-            spellcheck="false"
-            placeholder="Paste LinkedIn About, Experience, Skills, Headline, Education, Certifications, etc."></textarea>
-
-          <div class="upload-row">
-            <label for="linkedinPdfInput" class="file-label">Upload LinkedIn PDF</label>
-            <input type="file" id="linkedinPdfInput" accept=".pdf" hidden />
-            <span id="pdfStatus" class="status-text">No PDF uploaded yet.</span>
-          </div>
-
-          <div class="generator-grid">
-            <div>
-              <label for="personName">Name</label>
-              <input id="personName" type="text" placeholder="Your full name" />
-            </div>
-            <div>
-              <label for="personRole">Role / Headline</label>
-              <input id="personRole" type="text" placeholder="AI/ML Program Manager" />
-            </div>
-            <div>
-              <label for="personEmail">Email</label>
-              <input id="personEmail" type="email" placeholder="name@example.com" />
-            </div>
-            <div>
-              <label for="personLocation">Location</label>
-              <input id="personLocation" type="text" placeholder="Hyderabad, India" />
-            </div>
-            <div>
-              <label for="githubUrl">GitHub Profile URL</label>
-              <input id="githubUrl" type="url" placeholder="https://github.com/yourusername" />
-            </div>
-            <div>
-              <label for="portfolioTitle">Portfolio Title</label>
-              <input id="portfolioTitle" type="text" placeholder="AI/ML Program Manager Portfolio" />
-            </div>
-          </div>
-
-          <div class="card nested-card">
-            <label for="projectsInput">Deployed Projects (one per line)</label>
-            <textarea
-              id="projectsInput"
-              class="projects-textarea"
-              spellcheck="false"
-              placeholder="Example:
-Portfolio AI | AI-powered portfolio generator | https://your-project-url.com
-Expo Feedback App | Judge scoring app | https://expo-feedback.vercel.app
-ReelRocket | AI reels app for small businesses | https://github.com/yourusername/reelrocket"></textarea>
-            <p class="helper-text">Format: <strong>Project Name | Short Description | URL</strong></p>
-          </div>
-
-          <div class="actions">
-            <button id="generateBtn" type="button">Generate Portfolio</button>
-            <button id="loadSampleBtn" type="button">Load Sample</button>
-            <button id="clearLinkedinBtn" class="secondary" type="button">Clear</button>
-          </div>
-        </div>
-      </section>
-
-      <section id="editor" class="tab-panel">
-        <div class="card">
-          <label for="fileName">Project Name</label>
-          <input id="fileName" type="text" value="portfolio-ai.html" placeholder="portfolio-ai.html" />
-        </div>
-
-        <div class="card split-card">
-          <div class="split-header">
-            <h3>Split Editor + Live Preview</h3>
-            <p>Write or generate HTML and see it instantly.</p>
-          </div>
-
-          <div class="split-container">
-            <div class="split-left">
-              <label for="htmlInput">Code Editor</label>
-              <textarea id="htmlInput" spellcheck="false"><!DOCTYPE html>
-<html>
-<head>
-  <title>Portfolio AI</title>
-</head>
-<body>
-  <h1>Hello</h1>
-  <p>Generate a portfolio from the Generate tab.</p>
-</body>
-</html></textarea>
-            </div>
-
-            <div class="split-right">
-              <label>Live Preview</label>
-              <iframe id="previewFrame" sandbox="allow-scripts"></iframe>
-            </div>
-          </div>
-        </div>
-
-        <div class="actions">
-          <button id="runBtn" type="button">Run Preview</button>
-          <button id="saveBtn" type="button">Save Draft</button>
-          <button id="downloadBtn" type="button">Download HTML</button>
-          <button id="clearBtn" class="secondary" type="button">Clear</button>
-          <label for="fileInput" class="file-label">Import File</label>
-          <input type="file" id="fileInput" accept=".html,.htm,.txt" hidden />
-        </div>
-      </section>
-
-      <section id="preview" class="tab-panel">
-        <div class="card preview-card">
-          <iframe id="fullPreviewFrame" sandbox="allow-scripts"></iframe>
-        </div>
-      </section>
-
-      <section id="templates" class="tab-panel">
-        <div class="card">
-          <h2>Portfolio Templates</h2>
-          <div class="template-grid">
-            <button class="template-btn" data-template="modern" type="button">Modern Card</button>
-            <button class="template-btn" data-template="minimal" type="button">Minimal</button>
-            <button class="template-btn" data-template="executive" type="button">Executive</button>
-            <button class="template-btn" data-template="gradient" type="button">Gradient Hero</button>
-          </div>
-        </div>
-      </section>
-
-      <section id="recent" class="tab-panel">
-        <div class="card">
-          <h2>Recent Drafts</h2>
-          <div id="recentList" class="recent-list"></div>
-        </div>
-      </section>
-    </main>
+  <!-- TABS -->
+  <div class="tabs">
+    <button class="tab active" data-tab="generator">Generate</button>
+    <button class="tab" data-tab="editor">Editor</button>
+    <button class="tab" data-tab="preview">Preview</button>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.js"></script>
-  <script src="app.js"></script>
+  <!-- GENERATE -->
+  <section id="generator" class="tab-panel active">
+
+    <label>Paste LinkedIn Profile Text</label>
+    <textarea id="linkedinInput"></textarea>
+
+    <!-- PDF Upload -->
+    <label class="file-label">
+      Upload LinkedIn PDF
+      <input type="file" id="linkedinPdfInput" accept=".pdf" hidden>
+    </label>
+
+    <p id="pdfStatus">No PDF uploaded</p>
+
+    <input id="personName" placeholder="Name">
+    <input id="personRole" placeholder="Role">
+    <input id="githubUrl" placeholder="GitHub URL">
+
+    <label>Projects (Name | Desc | URL)</label>
+    <textarea id="projectsInput"></textarea>
+
+    <button id="generateBtn">Generate Portfolio</button>
+
+  </section>
+
+  <!-- EDITOR -->
+  <section id="editor" class="tab-panel">
+    <textarea id="htmlInput"></textarea>
+    <button id="runBtn">Run Preview</button>
+  </section>
+
+  <!-- PREVIEW -->
+  <section id="preview" class="tab-panel">
+    <iframe id="previewFrame"></iframe>
+  </section>
+
+</div>
+
+<script src="app.js"></script>
+
 </body>
 </html>
