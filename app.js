@@ -32,6 +32,9 @@ const tabs = document.querySelectorAll(".tab");
 const panels = document.querySelectorAll(".tab-panel");
 
 const STORAGE_KEY = "portfolioAiRecent";
+const PARSER_PANEL_ID = "parserPreviewPanel";
+
+let lastParsedData = null;
 
 if (window.pdfjsLib) {
   window.pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -220,11 +223,45 @@ function splitBulletish(sectionText) {
 }
 
 function inferExperience(text) {
-  const section = extractSection(text, ["experience"]);
-  if (!section) return [];
+  const lines = cleanLines(text);
+  const expSection = extractSection(text, ["experience"]);
+  const sourceLines = expSection ? cleanLines(expSection) : lines;
 
-  const items = splitBulletish(section);
-  return items.slice(0, 12);
+  const datePattern = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}\b/i;
+  const blocks = [];
+  let current = [];
+
+  for (const line of sourceLines) {
+    const isHeadingBreak = /^(education|skills|certifications|licenses|about|projects|summary)$/i.test(line);
+    if (isHeadingBreak) break;
+
+    const looksLikeRoleBlock =
+      datePattern.test(line) ||
+      / at /i.test(line) ||
+      /\|/.test(line) ||
+      /manager|engineer|lead|director|architect|analyst|consultant|developer|program|project|specialist|head/i.test(line);
+
+    if (looksLikeRoleBlock && current.length >= 2) {
+      blocks.push(current.join(" "));
+      current = [line];
+    } else {
+      current.push(line);
+    }
+  }
+
+  if (current.length) blocks.push(current.join(" "));
+
+  const cleaned = blocks
+    .map((b) => b.replace(/\s{2,}/g, " ").trim())
+    .filter(Boolean)
+    .filter((b) => b.length > 25)
+    .slice(0, 12);
+
+  if (cleaned.length) return cleaned;
+
+  return sourceLines
+    .filter((line) => line.length > 20)
+    .slice(0, 10);
 }
 
 function inferSkills(text) {
@@ -241,7 +278,9 @@ function inferSkills(text) {
 function inferEducation(text) {
   const section = extractSection(text, ["education"]);
   if (section) {
-    return splitBulletish(section).slice(0, 8);
+    return cleanLines(section)
+      .filter((line) => line.length > 3)
+      .slice(0, 8);
   }
 
   const lines = cleanLines(text);
@@ -250,8 +289,9 @@ function inferEducation(text) {
     /university/i, /college/i, /institute/i, /school/i, /degree/i
   ];
 
-  const matches = lines.filter((line) => eduKeywords.some((rx) => rx.test(line)));
-  return matches.slice(0, 6);
+  return lines
+    .filter((line) => eduKeywords.some((rx) => rx.test(line)))
+    .slice(0, 8);
 }
 
 function inferCertifications(text) {
@@ -263,17 +303,20 @@ function inferCertifications(text) {
   ]);
 
   if (section) {
-    return splitBulletish(section).slice(0, 10);
+    return cleanLines(section)
+      .filter((line) => line.length > 3)
+      .slice(0, 10);
   }
 
   const lines = cleanLines(text);
   const certKeywords = [
     /certified/i, /certification/i, /aws/i, /azure/i, /gcp/i,
-    /pmp/i, /scrum/i, /oracle/i, /microsoft/i, /google/i
+    /pmp/i, /scrum/i, /oracle/i, /microsoft/i, /google/i, /cloud/i
   ];
 
-  const matches = lines.filter((line) => certKeywords.some((rx) => rx.test(line)));
-  return matches.slice(0, 8);
+  return lines
+    .filter((line) => certKeywords.some((rx) => rx.test(line)))
+    .slice(0, 10);
 }
 
 function parseProjects(text) {
@@ -287,6 +330,103 @@ function parseProjects(text) {
       };
     })
     .filter((p) => p.name);
+}
+
+/* ---------------- Parser View ---------------- */
+function ensureParserPanel() {
+  let panel = document.getElementById(PARSER_PANEL_ID);
+  if (panel) return panel;
+
+  const generatorPanel = document.getElementById("generator");
+  if (!generatorPanel) return null;
+
+  panel = document.createElement("div");
+  panel.id = PARSER_PANEL_ID;
+  panel.style.marginTop = "16px";
+  panel.style.padding = "16px";
+  panel.style.borderRadius = "20px";
+  panel.style.border = "1px solid rgba(255,255,255,0.12)";
+  panel.style.background = "rgba(255,255,255,0.05)";
+  panel.style.color = "var(--text, #fff)";
+  panel.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+      <h3 style="margin:0;font-size:1.05rem;">Detected Profile Parser View</h3>
+      <button type="button" id="refreshParserBtn" style="border:none;border-radius:12px;padding:10px 14px;cursor:pointer;font-weight:700;background:linear-gradient(135deg,#5b8cff,#8b5cf6);color:#fff;">Refresh Parser</button>
+    </div>
+    <div id="parserPreviewContent"></div>
+  `;
+
+  generatorPanel.appendChild(panel);
+
+  const refreshBtn = document.getElementById("refreshParserBtn");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => {
+      const text = linkedinInput.value.trim();
+      if (!text) return;
+      autofillProfileFields(text);
+      renderParserPreview(text);
+    });
+  }
+
+  return panel;
+}
+
+function renderParserPreview(text) {
+  const panel = ensureParserPanel();
+  if (!panel) return;
+
+  const content = document.getElementById("parserPreviewContent");
+  if (!content) return;
+
+  const parsed = {
+    name: inferName(text),
+    role: inferRole(text),
+    summary: inferSummary(text),
+    experience: inferExperience(text),
+    education: inferEducation(text),
+    skills: inferSkills(text),
+    certifications: inferCertifications(text)
+  };
+
+  lastParsedData = parsed;
+
+  function renderList(items) {
+    if (!items || !items.length) return `<p style="margin:0;color:#a9b7d0;">Not detected</p>`;
+    return `<ul style="margin:0;padding-left:18px;line-height:1.7;">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+  }
+
+  content.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div style="padding:14px;border-radius:16px;background:rgba(255,255,255,0.04);">
+        <h4 style="margin:0 0 8px;">Name</h4>
+        <p style="margin:0;color:#dbe7ff;">${escapeHtml(parsed.name || "Not detected")}</p>
+      </div>
+      <div style="padding:14px;border-radius:16px;background:rgba(255,255,255,0.04);">
+        <h4 style="margin:0 0 8px;">Role</h4>
+        <p style="margin:0;color:#dbe7ff;">${escapeHtml(parsed.role || "Not detected")}</p>
+      </div>
+      <div style="padding:14px;border-radius:16px;background:rgba(255,255,255,0.04);grid-column:1 / -1;">
+        <h4 style="margin:0 0 8px;">Summary</h4>
+        <p style="margin:0;color:#dbe7ff;line-height:1.7;">${escapeHtml(parsed.summary || "Not detected")}</p>
+      </div>
+      <div style="padding:14px;border-radius:16px;background:rgba(255,255,255,0.04);">
+        <h4 style="margin:0 0 8px;">Experience</h4>
+        ${renderList(parsed.experience)}
+      </div>
+      <div style="padding:14px;border-radius:16px;background:rgba(255,255,255,0.04);">
+        <h4 style="margin:0 0 8px;">Education</h4>
+        ${renderList(parsed.education)}
+      </div>
+      <div style="padding:14px;border-radius:16px;background:rgba(255,255,255,0.04);">
+        <h4 style="margin:0 0 8px;">Skills</h4>
+        ${renderList(parsed.skills)}
+      </div>
+      <div style="padding:14px;border-radius:16px;background:rgba(255,255,255,0.04);">
+        <h4 style="margin:0 0 8px;">Certifications</h4>
+        ${renderList(parsed.certifications)}
+      </div>
+    </div>
+  `;
 }
 
 /* ---------------- Better PDF extraction ---------------- */
@@ -306,7 +446,8 @@ async function extractPdfTextPreserveLines(file) {
       if (!str) continue;
 
       const y = Math.round(item.transform[5]);
-      rows.push({ y, str, x: item.transform[4] || 0 });
+      const x = Math.round(item.transform[4] || 0);
+      rows.push({ y, x, str });
     }
 
     rows.sort((a, b) => {
@@ -317,7 +458,7 @@ async function extractPdfTextPreserveLines(file) {
     const grouped = [];
     for (const row of rows) {
       const last = grouped[grouped.length - 1];
-      if (!last || Math.abs(last.y - row.y) > 2) {
+      if (!last || Math.abs(last.y - row.y) > 3) {
         grouped.push({ y: row.y, parts: [row] });
       } else {
         last.parts.push(row);
@@ -332,7 +473,16 @@ async function extractPdfTextPreserveLines(file) {
     pagesText.push(lines.join("\n"));
   }
 
-  return normalizeExtractedText(pagesText.join("\n\n"));
+  let text = pagesText.join("\n\n");
+
+  text = text
+    .replace(/\s{2,}/g, " ")
+    .replace(/(Experience|Education|Skills|Certifications|Licenses & Certifications|About)\s+/gi, "\n$1\n")
+    .replace(/([A-Z][a-z]+ \d{4} ?[–-] ?(?:Present|[A-Z][a-z]+ \d{4}))/g, "\n$1\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  return text;
 }
 
 /* ---------------- PDF Upload ---------------- */
@@ -351,6 +501,7 @@ if (linkedinPdfInput) {
       const normalized = await extractPdfTextPreserveLines(file);
       linkedinInput.value = normalized;
       autofillProfileFields(normalized);
+      renderParserPreview(normalized);
       pdfStatus.textContent = "PDF extracted successfully.";
     } catch (err) {
       console.error(err);
@@ -362,7 +513,9 @@ if (linkedinPdfInput) {
 if (linkedinInput) {
   linkedinInput.addEventListener("blur", () => {
     const text = linkedinInput.value.trim();
-    if (text) autofillProfileFields(text);
+    if (!text) return;
+    autofillProfileFields(text);
+    renderParserPreview(text);
   });
 }
 
@@ -469,7 +622,7 @@ function generateHTML(text) {
   const title = portfolioTitle.value.trim() || `${name} Portfolio`;
 
   const expHtml = (experience.length ? experience : ["Add your experience here."])
-    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .map((item) => `<div class="timeline-item"><p>${escapeHtml(item)}</p></div>`)
     .join("");
 
   const eduHtml = (education.length ? education : ["Add your education here."])
@@ -516,63 +669,131 @@ body{
   font-family:Inter,Arial,sans-serif;
   font-size:16px;
   line-height:1.6;
-  color:#f8fbff;
+  color:#eef4ff;
   background:
-    radial-gradient(circle at top left, rgba(91,140,255,.25), transparent 25%),
-    radial-gradient(circle at bottom right, rgba(139,92,246,.2), transparent 25%),
-    linear-gradient(135deg,#081120,#0f1b33 60%,#13203a);
+    radial-gradient(circle at top left, rgba(91,140,255,.18), transparent 25%),
+    radial-gradient(circle at bottom right, rgba(139,92,246,.16), transparent 25%),
+    linear-gradient(135deg,#07101e,#0d1830 58%,#132442);
 }
-.wrap{max-width:1100px;margin:0 auto;padding:42px 20px}
-.hero,.card{
-  background:rgba(255,255,255,.08);
+.wrap{max-width:1120px;margin:0 auto;padding:42px 20px}
+.hero{
+  padding:34px 30px;
+  border-radius:30px;
+  background:linear-gradient(135deg,rgba(91,140,255,.18),rgba(139,92,246,.14));
   border:1px solid rgba(255,255,255,.12);
-  border-radius:28px;
-  padding:28px;
-  box-shadow:0 24px 60px rgba(0,0,0,.25);
-  backdrop-filter:blur(16px)
+  box-shadow:0 24px 70px rgba(0,0,0,.28);
+  margin-bottom:20px;
 }
-.hero{margin-bottom:18px}
-h1{margin:0;font-size:clamp(2rem,5vw,3.5rem);line-height:1.15}
-.role{margin:10px 0;color:#c4d5ff;font-size:1.15rem;font-weight:600}
-.contact{margin:0 0 14px;color:#9fb2d6;font-size:.98rem}
-.summary{margin:0;color:#e4edff;line-height:1.75;font-size:1rem}
-.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px;margin-top:18px}
-h2{margin:0 0 14px;font-size:1.2rem}
-h3{margin:0 0 8px;font-size:1rem}
-ul{margin:0;padding-left:20px;line-height:1.8;color:#dbe7ff}
-li{margin-bottom:8px}
-.chips{display:flex;flex-wrap:wrap;gap:10px}
+.hero h1{
+  margin:0;
+  font-size:clamp(2.2rem,5vw,3.8rem);
+  line-height:1.1;
+}
+.role{
+  margin:10px 0 8px;
+  color:#c8d8ff;
+  font-size:1.12rem;
+  font-weight:600;
+}
+.contact{
+  margin:0 0 16px;
+  color:#9fb2d6;
+  font-size:.96rem;
+}
+.summary{
+  margin:0;
+  color:#e6eeff;
+  line-height:1.8;
+  max-width:860px;
+}
+.grid{
+  display:grid;
+  grid-template-columns:1.05fr .95fr;
+  gap:18px;
+}
+.card{
+  background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:26px;
+  padding:24px;
+  box-shadow:0 18px 50px rgba(0,0,0,.18);
+}
+h2{
+  margin:0 0 16px;
+  font-size:1.15rem;
+  color:#ffffff;
+}
+ul{
+  margin:0;
+  padding-left:20px;
+  color:#dbe7ff;
+}
+li{margin-bottom:10px}
+.chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+}
 .chip{
   padding:10px 14px;
   border-radius:999px;
   background:linear-gradient(135deg,#5b8cff,#8b5cf6);
+  color:white;
   font-size:.92rem;
-  font-weight:700
+  font-weight:700;
 }
-.projects{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.timeline-item{
+  padding:14px 16px;
+  border-left:3px solid #7ea4ff;
+  background:rgba(255,255,255,.04);
+  border-radius:14px;
+  margin-bottom:12px;
+}
+.timeline-item p{
+  margin:0;
+  color:#e2ebff;
+}
+.projects{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px;
+}
 .project{
   border:1px solid rgba(255,255,255,.12);
-  border-radius:18px;
+  border-radius:20px;
   padding:18px;
-  background:rgba(255,255,255,.05)
+  background:rgba(255,255,255,.05);
 }
-.project p{margin:0 0 12px;line-height:1.6;color:#dbe7ff}
+.project h3{
+  margin:0 0 8px;
+  color:#fff;
+}
+.project p{
+  margin:0 0 12px;
+  color:#d8e5ff;
+}
 .project a{
   display:inline-block;
   padding:10px 14px;
   border-radius:12px;
   background:linear-gradient(135deg,#5b8cff,#8b5cf6);
-  color:white;
+  color:#fff;
   text-decoration:none;
-  font-weight:700
+  font-weight:700;
 }
-.footer{text-align:center;color:#93a7ce;margin-top:20px;font-size:.92rem}
-@media (max-width:800px){
+.section{
+  margin-top:18px;
+}
+.footer{
+  text-align:center;
+  color:#91a5cc;
+  margin-top:22px;
+  font-size:.92rem;
+}
+@media (max-width:820px){
   .grid,.projects{grid-template-columns:1fr}
   .wrap{padding:22px 14px}
   .hero,.card{padding:20px}
-  h1{font-size:2rem}
-  .role{font-size:1rem}
   body{font-size:15px}
 }
 </style>
@@ -588,30 +809,33 @@ li{margin-bottom:8px}
 
   <section class="grid">
     <div class="card">
-      <h2>Experience</h2>
-      <ul>${expHtml}</ul>
+      <h2>Professional Experience</h2>
+      ${expHtml}
     </div>
+
     <div class="card">
-      <h2>Skills</h2>
+      <h2>Core Skills</h2>
       <div class="chips">${skillsHtml}</div>
     </div>
+
     <div class="card">
       <h2>Education</h2>
       <ul>${eduHtml}</ul>
     </div>
+
     <div class="card">
       <h2>Certifications</h2>
       <ul>${certHtml}</ul>
     </div>
   </section>
 
-  <section class="card" style="margin-top:18px">
+  <section class="card section">
     <h2>Projects</h2>
     <div class="projects">${projectsHtml}</div>
   </section>
 
-  <section class="card" style="margin-top:18px">
-    <h2>About</h2>
+  <section class="card section">
+    <h2>Professional Summary</h2>
     <p class="summary">${escapeHtml(summary)}</p>
   </section>
 
@@ -786,7 +1010,7 @@ async function exportPreviewAsPng() {
 
     const iframe = document.createElement("iframe");
     iframe.style.width = "1200px";
-    iframe.style.height = "1600px";
+    iframe.style.height = "1800px";
     iframe.style.border = "0";
     iframe.setAttribute("sandbox", "allow-same-origin");
     root.appendChild(iframe);
@@ -794,7 +1018,7 @@ async function exportPreviewAsPng() {
     iframe.srcdoc = html;
 
     await new Promise((resolve) => {
-      iframe.onload = () => setTimeout(resolve, 800);
+      iframe.onload = () => setTimeout(resolve, 1200);
     });
 
     const doc = iframe.contentDocument || iframe.contentWindow.document;
@@ -807,14 +1031,28 @@ async function exportPreviewAsPng() {
       backgroundColor: "#ffffff",
       useCORS: true,
       scale: 2,
-      width: doc.body.scrollWidth,
+      width: Math.max(doc.body.scrollWidth, 1200),
       height: doc.body.scrollHeight,
-      windowWidth: doc.body.scrollWidth,
+      windowWidth: Math.max(doc.body.scrollWidth, 1200),
       windowHeight: doc.body.scrollHeight
     });
 
+    const dataUrl = canvas.toDataURL("image/png");
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+    if (isIOS) {
+      const win = window.open();
+      if (win) {
+        win.document.write(`<title>portfolio-preview.png</title><img src="${dataUrl}" style="max-width:100%;height:auto;display:block;margin:0 auto;" />`);
+        win.document.close();
+      } else {
+        alert("Popup blocked. Please allow popups to export PNG on iPhone.");
+      }
+      return;
+    }
+
     const a = document.createElement("a");
-    a.href = canvas.toDataURL("image/png");
+    a.href = dataUrl;
     a.download = "portfolio-preview.png";
     a.click();
   } catch (err) {
@@ -834,6 +1072,7 @@ if (generateBtn) {
     }
 
     autofillProfileFields(text);
+    renderParserPreview(text);
 
     const hasGithub = !!extractGithubUsername(githubUrl.value);
 
@@ -917,6 +1156,8 @@ Scrum Master Certification`;
     projectsInput.value = "";
     if (githubStatus) githubStatus.textContent = "Sample loaded. GitHub is optional.";
     if (pdfStatus) pdfStatus.textContent = "No PDF uploaded.";
+
+    renderParserPreview(linkedinInput.value);
   });
 }
 
@@ -932,11 +1173,24 @@ if (clearLinkedinBtn) {
     projectsInput.value = "";
     if (githubStatus) githubStatus.textContent = "No GitHub repos fetched.";
     if (pdfStatus) pdfStatus.textContent = "No PDF uploaded.";
+
+    const panel = document.getElementById(PARSER_PANEL_ID);
+    if (panel) {
+      const content = document.getElementById("parserPreviewContent");
+      if (content) content.innerHTML = `<p style="margin:0;color:#a9b7d0;">Paste LinkedIn text or upload PDF to detect sections.</p>`;
+    }
   });
 }
 
 /* ---------------- Init from shared link ---------------- */
 (function init() {
+  ensureParserPanel();
+
+  const content = document.getElementById("parserPreviewContent");
+  if (content) {
+    content.innerHTML = `<p style="margin:0;color:#a9b7d0;">Paste LinkedIn text or upload PDF to detect sections.</p>`;
+  }
+
   const match = location.hash.match(/^#share=(.+)$/);
   if (match) {
     const decoded = decodeHtmlFromHash(decodeURIComponent(match[1]));
@@ -946,5 +1200,6 @@ if (clearLinkedinBtn) {
       switchTab("preview");
     }
   }
+
   renderRecentFiles();
 })();
