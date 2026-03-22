@@ -59,8 +59,25 @@ function escapeHtml(str) {
   }[c]));
 }
 
+function normalizeExtractedText(text) {
+  return String(text || "")
+    .replace(/\r/g, "")
+    .replace(/\u2022/g, "\n• ")
+    .replace(/\s+\|\s+/g, " | ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function splitIntoLinesSmart(text) {
+  return normalizeExtractedText(text)
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 function cleanLines(text) {
-  return text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  return splitIntoLinesSmart(text);
 }
 
 function normalizeUrl(url) {
@@ -88,13 +105,77 @@ function extractGithubUsername(url) {
   }
 }
 
+function findEmail(text) {
+  const match = String(text || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return match ? match[0] : "";
+}
+
+function inferLocation(text) {
+  if (personLocation.value.trim()) return personLocation.value.trim();
+
+  const lines = splitIntoLinesSmart(text);
+  const locationPatterns = [
+    /hyderabad/i, /india/i, /bengaluru/i, /bangalore/i, /chennai/i,
+    /mumbai/i, /delhi/i, /pune/i, /london/i, /usa/i, /uk/i,
+    /singapore/i, /dubai/i, /australia/i, /canada/i
+  ];
+
+  for (const line of lines.slice(0, 12)) {
+    if (locationPatterns.some((rx) => rx.test(line))) {
+      return line;
+    }
+  }
+
+  return "";
+}
+
+function inferNameFromText(text) {
+  if (personName.value.trim()) return personName.value.trim();
+
+  const lines = splitIntoLinesSmart(text);
+  if (!lines.length) return "Your Name";
+
+  const first = lines[0]
+    .replace(/^name[:\s-]*/i, "")
+    .trim();
+
+  return first || "Your Name";
+}
+
+function inferRoleFromText(text) {
+  if (personRole.value.trim()) return personRole.value.trim();
+
+  const lines = splitIntoLinesSmart(text);
+  if (lines.length < 2) return "Professional";
+
+  const second = lines[1]
+    .replace(/^headline[:\s-]*/i, "")
+    .trim();
+
+  return second || "Professional";
+}
+
+function autofillProfileFields(text) {
+  const normalized = normalizeExtractedText(text);
+  const name = inferNameFromText(normalized);
+  const role = inferRoleFromText(normalized);
+  const email = findEmail(normalized);
+  const location = inferLocation(normalized);
+
+  if (!personName.value.trim() && name) personName.value = name;
+  if (!personRole.value.trim() && role) personRole.value = role;
+  if (!personEmail.value.trim() && email) personEmail.value = email;
+  if (!personLocation.value.trim() && location) personLocation.value = location;
+}
+
 function extractSection(text, headings) {
   const lines = cleanLines(text);
   const wanted = headings.map((h) => h.toLowerCase());
 
   let start = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (wanted.includes(lines[i].toLowerCase())) {
+    const current = lines[i].toLowerCase().replace(/:$/, "").trim();
+    if (wanted.includes(current)) {
       start = i + 1;
       break;
     }
@@ -102,55 +183,83 @@ function extractSection(text, headings) {
 
   if (start === -1) return "";
 
-  const stopWords = ["about", "experience", "education", "skills", "projects", "certifications", "summary"];
-  const out = [];
+  const stopWords = [
+    "about", "experience", "education", "skills", "projects",
+    "certifications", "summary", "licenses", "honors", "contact"
+  ];
 
+  const out = [];
   for (let i = start; i < lines.length; i++) {
-    const cur = lines[i].toLowerCase();
-    if (stopWords.includes(cur) && !wanted.includes(cur)) break;
+    const current = lines[i].toLowerCase().replace(/:$/, "").trim();
+    if (stopWords.includes(current) && !wanted.includes(current)) break;
     out.push(lines[i]);
   }
 
-  return out.join("\n");
+  return out.join("\n").trim();
 }
 
 function inferName(text) {
-  return personName.value.trim() || cleanLines(text)[0] || "Your Name";
+  return inferNameFromText(text);
 }
 
 function inferRole(text) {
-  return personRole.value.trim() || cleanLines(text)[1] || "Professional";
+  return inferRoleFromText(text);
 }
 
 function inferSummary(text) {
-  return extractSection(text, ["about", "summary"]) || cleanLines(text).slice(2, 6).join(" ") || "Professional summary";
+  const section = extractSection(text, ["about", "summary"]);
+  if (section) {
+    return section.replace(/\s{2,}/g, " ").trim();
+  }
+
+  const lines = cleanLines(text).slice(2, 8);
+  return lines.join(" ").trim() || "Professional summary";
 }
 
 function inferExperience(text) {
   const section = extractSection(text, ["experience"]);
-  return section ? cleanLines(section).slice(0, 8) : [];
+  if (!section) return [];
+
+  return section
+    .split(/\n|•/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 function inferSkills(text) {
   const section = extractSection(text, ["skills"]);
   if (!section) return [];
-  return section.split(/,|\n|•|·/).map((s) => s.trim()).filter(Boolean).slice(0, 10);
+
+  return section
+    .split(/,|\n|•|·/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 12);
 }
 
 function inferEducation(text) {
   const section = extractSection(text, ["education"]);
-  return section ? cleanLines(section).slice(0, 4) : [];
+  if (!section) return [];
+
+  return section
+    .split(/\n|•/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 5);
 }
 
 function parseProjects(text) {
-  return cleanLines(text).map((line) => {
-    const [name = "", description = "", url = ""] = line.split("|").map((s) => s.trim());
-    return {
-      name,
-      description,
-      url: normalizeUrl(url)
-    };
-  }).filter((p) => p.name);
+  return cleanLines(text)
+    .map((line) => {
+      const [name = "", description = "", url = ""] = line.split("|").map((s) => s.trim());
+      return {
+        name,
+        description,
+        url: normalizeUrl(url)
+      };
+    })
+    .filter((p) => p.name);
 }
 
 /* ---------------- PDF Upload ---------------- */
@@ -176,12 +285,21 @@ if (linkedinPdfInput) {
         text += content.items.map((item) => item.str).join(" ") + "\n\n";
       }
 
-      linkedinInput.value = text.trim();
+      const normalized = normalizeExtractedText(text);
+      linkedinInput.value = normalized;
+      autofillProfileFields(normalized);
       pdfStatus.textContent = "PDF extracted successfully.";
     } catch (err) {
       console.error(err);
       pdfStatus.textContent = "Failed to read PDF.";
     }
+  });
+}
+
+if (linkedinInput) {
+  linkedinInput.addEventListener("blur", () => {
+    const text = linkedinInput.value.trim();
+    if (text) autofillProfileFields(text);
   });
 }
 
@@ -280,13 +398,16 @@ function generateHTML(text) {
   const title = portfolioTitle.value.trim() || `${name} Portfolio`;
 
   const expHtml = (experience.length ? experience : ["Add your experience here."])
-    .map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("");
 
   const eduHtml = (education.length ? education : ["Add your education here."])
-    .map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("");
 
   const skillsHtml = (skills.length ? skills : ["Leadership", "Strategy", "Technology"])
-    .map((item) => `<span class="chip">${escapeHtml(item)}</span>`).join("");
+    .map((item) => `<span class="chip">${escapeHtml(item)}</span>`)
+    .join("");
 
   const projectsHtml = (projects.length ? projects : [{
     name: "Projects",
@@ -314,9 +435,12 @@ function generateHTML(text) {
 <title>${escapeHtml(title)}</title>
 <style>
 *{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
 body{
   margin:0;
   font-family:Inter,Arial,sans-serif;
+  font-size:16px;
+  line-height:1.6;
   color:#f8fbff;
   background:
     radial-gradient(circle at top left, rgba(91,140,255,.25), transparent 25%),
@@ -333,14 +457,54 @@ body{
   backdrop-filter:blur(16px)
 }
 .hero{margin-bottom:18px}
-h1{margin:0;font-size:clamp(2rem,4vw,4rem)}
-.role{margin:10px 0;color:#c4d5ff;font-size:1.2rem;font-weight:600}
-.contact{margin:0 0 14px;color:#9fb2d6}
-.summary{margin:0;color:#e4edff;line-height:1.75}
-.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px;margin-top:18px}
-h2{margin:0 0 14px}
-ul{margin:0;padding-left:18px;line-height:1.8;color:#dbe7ff}
-.chips{display:flex;flex-wrap:wrap;gap:10px}
+h1{
+  margin:0;
+  font-size:clamp(2rem,5vw,3.5rem);
+  line-height:1.15
+}
+.role{
+  margin:10px 0;
+  color:#c4d5ff;
+  font-size:1.15rem;
+  font-weight:600
+}
+.contact{
+  margin:0 0 14px;
+  color:#9fb2d6;
+  font-size:.98rem
+}
+.summary{
+  margin:0;
+  color:#e4edff;
+  line-height:1.75;
+  font-size:1rem
+}
+.grid{
+  display:grid;
+  grid-template-columns:1.1fr .9fr;
+  gap:18px;
+  margin-top:18px
+}
+h2{
+  margin:0 0 14px;
+  font-size:1.2rem
+}
+h3{
+  margin:0 0 8px;
+  font-size:1rem
+}
+ul{
+  margin:0;
+  padding-left:20px;
+  line-height:1.8;
+  color:#dbe7ff
+}
+li{margin-bottom:8px}
+.chips{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px
+}
 .chip{
   padding:10px 14px;
   border-radius:999px;
@@ -348,15 +512,22 @@ ul{margin:0;padding-left:18px;line-height:1.8;color:#dbe7ff}
   font-size:.92rem;
   font-weight:700
 }
-.projects{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.projects{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px
+}
 .project{
   border:1px solid rgba(255,255,255,.12);
   border-radius:18px;
   padding:18px;
   background:rgba(255,255,255,.05)
 }
-.project h3{margin:0 0 8px}
-.project p{margin:0 0 12px;line-height:1.6;color:#dbe7ff}
+.project p{
+  margin:0 0 12px;
+  line-height:1.6;
+  color:#dbe7ff
+}
 .project a{
   display:inline-block;
   padding:10px 14px;
@@ -366,10 +537,19 @@ ul{margin:0;padding-left:18px;line-height:1.8;color:#dbe7ff}
   text-decoration:none;
   font-weight:700
 }
-.footer{text-align:center;color:#93a7ce;margin-top:20px}
+.footer{
+  text-align:center;
+  color:#93a7ce;
+  margin-top:20px;
+  font-size:.92rem
+}
 @media (max-width:800px){
   .grid,.projects{grid-template-columns:1fr}
   .wrap{padding:22px 14px}
+  .hero,.card{padding:20px}
+  h1{font-size:2rem}
+  .role{font-size:1rem}
+  body{font-size:15px}
 }
 </style>
 </head>
@@ -431,6 +611,8 @@ function saveRecentFiles(files) {
 }
 
 function renderRecentFiles() {
+  if (!recentList) return;
+
   const files = getRecentFiles();
 
   if (!files.length) {
@@ -572,60 +754,69 @@ async function exportPreviewAsPng() {
 }
 
 /* ---------------- Events ---------------- */
-generateBtn.addEventListener("click", async () => {
-  const text = linkedinInput.value.trim();
+if (generateBtn) {
+  generateBtn.addEventListener("click", async () => {
+    const text = linkedinInput.value.trim();
 
-  if (!text) {
-    alert("Paste LinkedIn text or upload a PDF first.");
-    return;
-  }
-
-  const hasGithub = !!extractGithubUsername(githubUrl.value);
-
-  generateBtn.disabled = true;
-  generateBtn.textContent = "Generating...";
-
-  try {
-    if (hasGithub) {
-      await fetchGithubReposToProjects();
-    } else {
-      githubStatus.textContent = "GitHub not provided. Generating portfolio without repos.";
+    if (!text) {
+      alert("Paste LinkedIn text or upload a PDF first.");
+      return;
     }
 
-    const html = generateHTML(text);
-    htmlInput.value = html;
+    autofillProfileFields(text);
 
-    const safeName = inferName(text).toLowerCase().replace(/\s+/g, "-") || "portfolio-ai";
-    fileNameInput.value = `${safeName}.html`;
+    const hasGithub = !!extractGithubUsername(githubUrl.value);
 
+    generateBtn.disabled = true;
+    generateBtn.textContent = "Generating...";
+
+    try {
+      if (hasGithub) {
+        await fetchGithubReposToProjects();
+      } else if (githubStatus) {
+        githubStatus.textContent = "GitHub not provided. Generating portfolio without repos.";
+      }
+
+      const html = generateHTML(text);
+      htmlInput.value = html;
+
+      const safeName = inferName(text).toLowerCase().replace(/\s+/g, "-") || "portfolio-ai";
+      fileNameInput.value = `${safeName}.html`;
+
+      runPreview();
+      switchTab("editor");
+    } catch (error) {
+      console.error(error);
+      alert("Something went wrong while generating the portfolio.");
+    } finally {
+      generateBtn.disabled = false;
+      generateBtn.textContent = "Generate Portfolio";
+    }
+  });
+}
+
+if (runBtn) {
+  runBtn.addEventListener("click", () => {
     runPreview();
-    switchTab("editor");
-  } catch (error) {
-    console.error(error);
-    alert("Something went wrong while generating the portfolio.");
-  } finally {
-    generateBtn.disabled = false;
-    generateBtn.textContent = "Generate Portfolio";
-  }
-});
+    switchTab("preview");
+  });
+}
 
-runBtn.addEventListener("click", () => {
-  runPreview();
-  switchTab("preview");
-});
+if (saveBtn) saveBtn.addEventListener("click", saveDraft);
+if (downloadBtn) downloadBtn.addEventListener("click", () => downloadHtml(fileNameInput.value, htmlInput.value));
+if (shareBtn) shareBtn.addEventListener("click", createShareLink);
+if (exportBtn) exportBtn.addEventListener("click", exportPreviewAsPng);
 
-saveBtn.addEventListener("click", saveDraft);
-downloadBtn.addEventListener("click", () => downloadHtml(fileNameInput.value, htmlInput.value));
-shareBtn.addEventListener("click", createShareLink);
-exportBtn.addEventListener("click", exportPreviewAsPng);
+if (clearBtn) {
+  clearBtn.addEventListener("click", () => {
+    htmlInput.value = "";
+    runPreview();
+  });
+}
 
-clearBtn.addEventListener("click", () => {
-  htmlInput.value = "";
-  runPreview();
-});
-
-loadSampleBtn.addEventListener("click", () => {
-  linkedinInput.value = `Krishnamurthy Kandregula
+if (loadSampleBtn) {
+  loadSampleBtn.addEventListener("click", () => {
+    linkedinInput.value = `Krishnamurthy Kandregula
 AI/ML Program Manager | Product Strategy | Mainframes | Digital Transformation
 
 About
@@ -643,14 +834,32 @@ AI/ML, Product Management, Program Management, Mainframes, Cloud, Digital Transf
 Education
 B.Tech in Computer Science`;
 
-  personName.value = "Krishnamurthy Kandregula";
-  personRole.value = "AI/ML Program Manager";
-  personLocation.value = "India";
-  githubUrl.value = "";
-  portfolioTitle.value = "Krishnamurthy Kandregula Portfolio";
-  projectsInput.value = "";
-  githubStatus.textContent = "Sample loaded. GitHub is optional.";
-});
+    personName.value = "Krishnamurthy Kandregula";
+    personRole.value = "AI/ML Program Manager";
+    personEmail.value = "";
+    personLocation.value = "India";
+    githubUrl.value = "";
+    portfolioTitle.value = "Krishnamurthy Kandregula Portfolio";
+    projectsInput.value = "";
+    if (githubStatus) githubStatus.textContent = "Sample loaded. GitHub is optional.";
+    if (pdfStatus) pdfStatus.textContent = "No PDF uploaded.";
+  });
+}
+
+if (clearLinkedinBtn) {
+  clearLinkedinBtn.addEventListener("click", () => {
+    linkedinInput.value = "";
+    personName.value = "";
+    personRole.value = "";
+    personEmail.value = "";
+    personLocation.value = "";
+    githubUrl.value = "";
+    portfolioTitle.value = "";
+    projectsInput.value = "";
+    if (githubStatus) githubStatus.textContent = "No GitHub repos fetched.";
+    if (pdfStatus) pdfStatus.textContent = "No PDF uploaded.";
+  });
+}
 
 /* ---------------- Init from shared link ---------------- */
 (function init() {
